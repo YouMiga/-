@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RFM 模型分析 - 可导入 Figma 原型</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3-sankey@0.12"></script>
+  <style>
+    :root {
+      --bg: #f5f6fa;
+      --card: #ffffff;
+      --primary: #4f46e5;
+      --primary-light: #818cf8;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --success: #10b981;
+      --warning: #f59e0b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 24px;
+    }
+    h1 {
+      font-size: 24px;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+    .analysis-tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 2px solid var(--border);
+      margin-bottom: 24px;
+    }
+    .analysis-tab {
+      padding: 10px 20px;
+      font-size: 14px;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+    }
+    .analysis-tab:hover { color: var(--text); }
+    .analysis-tab.active {
+      color: var(--primary);
+      font-weight: 600;
+      border-bottom-color: var(--primary);
+    }
+    .section {
+      background: var(--card);
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    .section-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--primary);
+      color: var(--text);
+    }
+    .form-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+      align-items: flex-start;
+      margin-bottom: 16px;
+    }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .form-group label {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+    .form-group input, .form-group select {
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      width: 160px;
+    }
+    .form-group input:focus, .form-group select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.15);
+    }
+    .rfm-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      margin-top: 16px;
+    }
+    .rfm-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      background: #fafafa;
+    }
+    .rfm-card h4 {
+      font-size: 14px;
+      margin-bottom: 12px;
+      color: var(--primary);
+    }
+    .rfm-card .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+    .rfm-card .row span:first-child { color: var(--text-muted); }
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+    .btn-primary:hover { background: #4338ca; }
+    .btn-secondary {
+      background: var(--card);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: #f1f5f9; }
+    .query-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: flex-end;
+      margin-bottom: 20px;
+    }
+    .chart-wrap {
+      height: 320px;
+      margin-bottom: 20px;
+      position: relative;
+    }
+    .chart-wrap canvas { max-height: 320px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      background: #f8fafc;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    tr:hover { background: #f8fafc; }
+    .sankey-date-range {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+    .sankey-hover-info {
+      margin-top: 12px;
+      padding: 12px 16px;
+      background: #f1f5f9;
+      border-radius: 8px;
+      font-size: 14px;
+      color: var(--text);
+      min-height: 24px;
+    }
+    .sankey-hover-info.empty { color: var(--text-muted); }
+    .sankey-wrap {
+      height: 440px;
+      overflow: auto;
+    }
+    .sankey-wrap svg { display: block; }
+    .sankey-tooltip {
+      position: fixed;
+      left: 0;
+      top: 0;
+      padding: 12px 16px;
+      background: #1e293b;
+      color: #fff;
+      font-size: 14px;
+      border-radius: 8px;
+      pointer-events: none;
+      z-index: 2147483647;
+      display: none;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      line-height: 1.5;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    .sankey-tooltip.show {
+      display: block;
+    }
+    .tag-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .tag {
+      padding: 6px 12px;
+      background: #e0e7ff;
+      color: var(--primary);
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .tag-group {
+      margin-bottom: 16px;
+      padding: 12px;
+      background: #f8fafc;
+      border-radius: 8px;
+    }
+    .tag-group strong { font-size: 14px; }
+    .figma-note {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 8px;
+    }
+    .section-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--primary);
+    }
+    .section-title-wrap .section-title {
+      margin-bottom: 0;
+      padding-bottom: 0;
+      border-bottom: none;
+    }
+    .info-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--primary-light);
+      color: white;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .info-icon:hover { background: var(--primary); }
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal-box {
+      background: var(--card);
+      border-radius: 12px;
+      max-width: 720px;
+      width: 100%;
+      max-height: 85vh;
+      overflow: auto;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+    }
+    .modal-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 20px;
+      cursor: pointer;
+      color: var(--text-muted);
+      padding: 0 4px;
+      line-height: 1;
+    }
+    .modal-close:hover { color: var(--text); }
+    .confirm-modal-box { max-width: 400px; }
+    .confirm-modal-body { padding: 20px; font-size: 15px; color: var(--text); }
+    .confirm-modal-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 20px 20px;
+    }
+    .segment-info-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .segment-info-table th,
+    .segment-info-table td {
+      padding: 12px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    .segment-info-table th {
+      background: #f8fafc;
+      color: var(--text-muted);
+      font-weight: 600;
+      width: 1%;
+      white-space: nowrap;
+    }
+    .segment-info-table td:first-child {
+      font-weight: 500;
+      color: var(--primary);
+    }
+    .segment-info-table .segment-en { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .segment-info-table .segment-desc { color: var(--text); line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <h1>分析</h1>
+  <div class="analysis-tabs">
+    <span class="analysis-tab active">RFM 模型分析</span>
+    <!-- 后续可在此增加其他分析模块切换，如：<span class="analysis-tab">XXX 分析</span> -->
+  </div>
+
+  <!-- 1. RFM 参数设置 -->
+  <section class="section" id="section-params">
+    <div class="section-title-wrap">
+      <h2 class="section-title">1. RFM 模型参数设置</h2>
+      <span class="info-icon" id="rfm-info-icon" onclick="toggleSegmentInfo()" title="查看分群名称与得分分布说明">i</span>
+    </div>
+    <div class="rfm-grid">
+      <div class="rfm-card">
+        <h4>R - 最近一次购买（Recency）</h4>
+        <p class="figma-note">按距离购买日期天数划分得分，最近购买得分高</p>
+        <div class="row">
+          <span>3 分（最近）</span>
+          <span>≤ <input type="number" id="r3-days" value="180" min="1" /> 天</span>
+        </div>
+        <div class="row">
+          <span>2 分</span>
+          <span><input type="number" id="r2-days-min" value="181" /> ~ <input type="number" id="r2-days-max" value="365" /> 天</span>
+        </div>
+        <div class="row">
+          <span>1 分（最久）</span>
+          <span>> <input type="number" id="r1-days" value="365" min="1" /> 天</span>
+        </div>
+      </div>
+      <div class="rfm-card">
+        <h4>F - 购买频次（Frequency）</h4>
+        <p class="figma-note">按百分比分位自动分档，高分优先；若相同购买频次跨越分位边界，则统一划入高分档，因此各档实际占比可能略有浮动。</p>
+        <div class="row">
+          <span>3 分（高频）</span>
+          <span>前 <input type="number" id="f3-pct" value="34" min="1" max="100" /> %</span>
+        </div>
+        <div class="row">
+          <span>2 分</span>
+          <span>中 <input type="number" id="f2-pct" value="33" min="1" max="100" /> %</span>
+        </div>
+        <div class="row">
+          <span>1 分（低频）</span>
+          <span>后 <input type="number" id="f1-pct" value="33" min="1" max="100" /> %</span>
+        </div>
+      </div>
+      <div class="rfm-card">
+        <h4>M - 消费金额（Monetary）</h4>
+        <p class="figma-note">按百分比分位自动分档，高分优先；若相同购买金额跨越分位边界，则统一划入高分档，因此各档实际占比可能略有浮动。</p>
+        <div class="row">
+          <span>3 分（高额）</span>
+          <span>前 <input type="number" id="m3-pct" value="34" min="1" max="100" /> %</span>
+        </div>
+        <div class="row">
+          <span>2 分</span>
+          <span>中 <input type="number" id="m2-pct" value="33" min="1" max="100" /> %</span>
+        </div>
+        <div class="row">
+          <span>1 分（低额）</span>
+          <span>后 <input type="number" id="m1-pct" value="33" min="1" max="100" /> %</span>
+        </div>
+      </div>
+    </div>
+    <div class="form-row" style="margin-top: 16px;">
+      <button class="btn btn-primary" onclick="saveParams()">保存参数</button>
+      <button class="btn btn-secondary" onclick="resetParams()">恢复默认</button>
+    </div>
+  </section>
+
+  <!-- 分群说明弹窗 -->
+  <div class="modal-overlay" id="segment-info-modal" onclick="if(event.target===this)toggleSegmentInfo()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <span>分群名称与得分分布说明</span>
+        <button type="button" class="modal-close" onclick="toggleSegmentInfo()" aria-label="关闭">&times;</button>
+      </div>
+      <table class="segment-info-table" id="segment-info-table">
+        <thead>
+          <tr>
+            <th>分群名称</th>
+            <th>得分分布（按 RFM 顺序从左到右排列）</th>
+            <th>描述</th>
+          </tr>
+        </thead>
+        <tbody id="segment-info-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 2. 按日期查询：分群占比（柱状图 + 表格） -->
+  <section class="section" id="section-query">
+    <h2 class="section-title">2. 按日期查询 RFM 分群占比</h2>
+    <div class="query-bar">
+      <div class="form-group">
+        <label>开始日期</label>
+        <input type="date" id="query-date-start" />
+      </div>
+      <div class="form-group">
+        <label>结束日期</label>
+        <input type="date" id="query-date-end" />
+      </div>
+      <button class="btn btn-primary" onclick="querySegments()">查询占比</button>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="barChart"></canvas>
+    </div>
+    <p class="figma-note" style="margin-bottom: 12px;">浅色柱 = 开始日期人群分布，深色柱 = 结束日期人群分布</p>
+    <table id="segment-table">
+      <thead>
+        <tr>
+          <th>分群名称</th>
+          <th>得分分布（RFM）</th>
+          <th>开始日期人数</th>
+          <th>开始日期占比</th>
+          <th>结束日期人数</th>
+          <th>结束日期占比</th>
+        </tr>
+      </thead>
+      <tbody id="segment-tbody"></tbody>
+    </table>
+  </section>
+
+  <!-- 3. 按日期查询：人群流向（桑基图） -->
+  <section class="section" id="section-sankey">
+    <h2 class="section-title">3. 按日期查询 RFM 人群流向（桑基图）</h2>
+    <div class="query-bar">
+      <div class="form-group">
+        <label>起始日期</label>
+        <input type="date" id="sankey-date-from" />
+      </div>
+      <div class="form-group">
+        <label>结束日期</label>
+        <input type="date" id="sankey-date-to" />
+      </div>
+      <button class="btn btn-primary" onclick="drawSankey()">查询流向</button>
+    </div>
+    <div class="sankey-wrap" id="sankey-container"></div>
+    <div class="sankey-hover-info empty" id="sankey-hover-info">点击连线，在线段上方显示日期与流转人数</div>
+  </section>
+
+  <!-- 4. 根据配置生成 RFM 群组 -->
+  <section class="section" id="section-tags">
+    <h2 class="section-title">4. 根据分析配置生成 RFM 群组</h2>
+    <p class="figma-note">基于当前参数与当前日期，一键生成可用的分群，分群将按照动态分群更新频率进行更新。</p>
+    <div class="form-row">
+      <button class="btn btn-primary" onclick="showConfirmGenerateModal()">生成群组</button>
+    </div>
+    <div id="tag-output"></div>
+  </section>
+
+  <div class="sankey-tooltip" id="sankey-tooltip"></div>
+
+  <!-- 生成群组确认弹窗 -->
+  <div class="modal-overlay" id="confirm-generate-modal" onclick="if(event.target===this)closeConfirmGenerateModal()">
+    <div class="modal-box confirm-modal-box" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <span></span>
+        <button type="button" class="modal-close" onclick="closeConfirmGenerateModal()" aria-label="关闭">&times;</button>
+      </div>
+      <div class="confirm-modal-body">确认生成RFM群组</div>
+      <div class="confirm-modal-footer">
+        <span></span>
+        <div style="display:flex;gap:12px;">
+          <button type="button" class="btn btn-secondary" onclick="closeConfirmGenerateModal()">取消</button>
+          <button type="button" class="btn btn-primary" onclick="confirmGenerateGroups()">确定</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 默认日期
+    function setDefaultDates() {
+      var today = new Date();
+      var lastMonth = new Date(today);
+      lastMonth.setMonth(lastMonth.getMonth() - 1);
+      function toYMD(d) {
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      }
+      var qs = document.getElementById('query-date-start');
+      var qe = document.getElementById('query-date-end');
+      var sf = document.getElementById('sankey-date-from');
+      var st = document.getElementById('sankey-date-to');
+      if (qs && !qs.value) qs.value = toYMD(lastMonth);
+      if (qe && !qe.value) qe.value = toYMD(today);
+      if (sf && !sf.value) sf.value = toYMD(lastMonth);
+      if (st && !st.value) st.value = toYMD(today);
+    }
+    setDefaultDates();
+
+    // 分群说明（信息 icon 弹窗用）
+    var SEGMENT_INFO = [
+      { name: '核心客户', en: 'Champions', scores: '333、332、323', desc: '最佳客户：他们近期购买过商品，购买频率高，且每次消费金额最大。' },
+      { name: '忠诚客户', en: 'Loyal', scores: '321、322、331、232、233', desc: '积极参与的优质客户，他们购买时间较近或购买频率较高，但消费金额低于同级别的冠军级用户。' },
+      { name: '近期客户', en: 'Recent', scores: '312、313、311、222、223', desc: '近期客户：他们可能最近购买过商品，但他们通常不会频繁购买。' },
+      { name: '需要关注客户', en: 'Needs attention', scores: '213、221、123、132、133', desc: '一位近期未购买过商品的宝贵客户，他们过去可能消费很多或购物频繁，但最近没有购物。' },
+      { name: '流失风险客户', en: 'At risk', scores: '231、212、122、131、211', desc: '近期未购买且/或总体消费额较低的顾客。他们可能过去购买过，但最近没有购买。他们的消费额低于需要关注的同类顾客。' },
+      { name: '流失客户', en: 'Inactive', scores: '111、112、113、121', desc: '流失客户：指很久没有购买过商品的低频客户。' }
+    ];
+
+    function toggleSegmentInfo() {
+      var modal = document.getElementById('segment-info-modal');
+      if (modal.classList.contains('show')) {
+        modal.classList.remove('show');
+      } else {
+        var tbody = document.getElementById('segment-info-tbody');
+        tbody.innerHTML = '';
+        SEGMENT_INFO.forEach(function(s) {
+          var tr = document.createElement('tr');
+          tr.innerHTML = '<td>' + s.name + '<div class="segment-en">' + s.en + '</div></td><td>' + s.scores + '</td><td class="segment-desc">' + s.desc + '</td>';
+          tbody.appendChild(tr);
+        });
+        modal.classList.add('show');
+      }
+    }
+
+    // 六群组配置：分群名称、英文、得分分布（按 RFM 从左到右）
+    var SEGMENTS = [
+      { name: '核心客户', en: 'Champions', scores: '333、332、323' },
+      { name: '忠诚客户', en: 'Loyal', scores: '321、322、331、232、233' },
+      { name: '近期客户', en: 'Recent', scores: '312、313、311、222、223' },
+      { name: '需要关注客户', en: 'Needs attention', scores: '213、221、123、132、133' },
+      { name: '流失风险客户', en: 'At risk', scores: '231、212、122、131、211' },
+      { name: '流失客户', en: 'Inactive', scores: '111、112、113、121' }
+    ];
+    var SEGMENT_LABELS = SEGMENTS.map(function(s) { return s.name + ' ' + s.en; });
+    var MOCK_PCTS = [18, 22, 15, 14, 16, 15];
+    var barChart = null;
+
+    function querySegments() {
+      var start = document.getElementById('query-date-start').value;
+      var end = document.getElementById('query-date-end').value;
+      if (!start || !end) {
+        alert('请选择开始日期和结束日期');
+        return;
+      }
+      // 模拟：开始日期、结束日期各生成一套占比，用于对比
+      function toPcts(seed) {
+        var raw = MOCK_PCTS.map(function(p, i) {
+          return Math.max(2, Math.min(28, p + (seed % 7) - 3 + (i % 2)));
+        });
+        var total = raw.reduce(function(a, b) { return a + b; }, 0);
+        var pcts = raw.map(function(p) { return Math.round((p / total) * 1000) / 10; });
+        var sum = pcts.reduce(function(a, b) { return a + b; }, 0);
+        if (sum !== 100) pcts[0] += (100 - sum);
+        var rounded = pcts.map(function(p) { return Math.round(p * 10) / 10; });
+        var roundedSum = rounded.reduce(function(a, b) { return a + b; }, 0);
+        rounded[0] = Math.round((rounded[0] + (100 - roundedSum)) * 10) / 10;
+        return rounded;
+      }
+      var seedStart = start.split('').reduce(function(a, c) { return a + c.charCodeAt(0); }, 0);
+      var seedEnd = end.split('').reduce(function(a, c) { return a + c.charCodeAt(0); }, 0);
+      var pctsStart = toPcts(seedStart);
+      var pctsEnd = toPcts(seedEnd);
+
+      var tbody = document.getElementById('segment-tbody');
+      tbody.innerHTML = '';
+      var countStart = pctsStart.map(function(p) { return Math.round(10000 * p / 100); });
+      var countEnd = pctsEnd.map(function(p) { return Math.round(10000 * p / 100); });
+      for (var i = 0; i < SEGMENTS.length; i++) {
+        var seg = SEGMENTS[i];
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td>' + seg.name + '<br><span style="color:var(--text-muted);font-size:12px">' + seg.en + '</span></td><td>' + seg.scores + '</td><td>' + countStart[i].toLocaleString() + '</td><td>' + Number(pctsStart[i]).toFixed(1) + '%</td><td>' + countEnd[i].toLocaleString() + '</td><td>' + Number(pctsEnd[i]).toFixed(1) + '%</td>';
+        tbody.appendChild(tr);
+      }
+
+      if (barChart) barChart.destroy();
+      var ctx = document.getElementById('barChart').getContext('2d');
+      barChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: SEGMENTS.map(function(s) { return s.name; }),
+          datasets: [
+            {
+              label: '开始日期',
+              data: pctsStart,
+              backgroundColor: 'rgba(129, 140, 248, 0.65)',
+              borderColor: 'rgb(129, 140, 248)',
+              borderWidth: 1
+            },
+            {
+              label: '结束日期',
+              data: pctsEnd,
+              backgroundColor: 'rgba(79, 70, 229, 0.85)',
+              borderColor: 'rgb(67, 56, 202)',
+              borderWidth: 1
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: true,
+              position: 'top'
+            }
+          },
+          scales: {
+            y: { beginAtZero: true, max: 100 },
+            x: { ticks: { maxRotation: 45, minRotation: 45 } }
+          }
+        }
+      });
+    }
+
+    // 桑基图（D3 + d3-sankey）：期初分群 -> 期末分群 人群流向，6x6 全连接，连线悬浮显示原群组→后群组 人数
+    function drawSankey() {
+      var from = document.getElementById('sankey-date-from').value;
+      var to = document.getElementById('sankey-date-to').value;
+      if (!from || !to) {
+        alert('请选择起始日期和结束日期');
+        return;
+      }
+
+      var container = document.getElementById('sankey-container');
+      container.innerHTML = '';
+
+      var names = SEGMENTS.map(function(s) { return s.name; });
+      var graph = {
+        nodes: [
+          { id: '核心客户', side: 'L' }, { id: '忠诚客户', side: 'L' }, { id: '近期客户', side: 'L' },
+          { id: '需要关注客户', side: 'L' }, { id: '流失风险客户', side: 'L' }, { id: '流失客户', side: 'L' },
+          { id: '核心客户', side: 'R' }, { id: '忠诚客户', side: 'R' }, { id: '近期客户', side: 'R' },
+          { id: '需要关注客户', side: 'R' }, { id: '流失风险客户', side: 'R' }, { id: '流失客户', side: 'R' }
+        ],
+        links: []
+      };
+      var seed = (from + to).split('').reduce(function(a, c) { return a + c.charCodeAt(0); }, 0);
+      for (var i = 0; i < 6; i++) {
+        for (var j = 0; j < 6; j++) {
+          var v = i === j ? 80 + (seed % 40) : Math.max(5, 15 + (seed + i * 7 + j) % 25);
+          graph.links.push({ source: i, target: 6 + j, value: v, sourceName: names[i], targetName: names[j] });
+        }
+      }
+      graph.links.forEach(function(l) {
+        l.source = graph.nodes[l.source];
+        l.target = graph.nodes[l.target];
+      });
+
+      var labelWidth = 100;
+      var width = Math.max(700, (container.clientWidth || 700));
+      var height = 400;
+      var svg = d3.select(container).append('svg').attr('width', width).attr('height', height);
+      var sankey = d3.sankey().nodeWidth(14).nodePadding(8).extent([[labelWidth, 16], [width - labelWidth, height - 16]]);
+      sankey(graph);
+
+      var tooltipEl = document.getElementById('sankey-tooltip');
+      if (!tooltipEl) {
+        tooltipEl = document.createElement('div');
+        tooltipEl.id = 'sankey-tooltip';
+        tooltipEl.className = 'sankey-tooltip';
+        document.body.appendChild(tooltipEl);
+      }
+
+      function tipText(d) {
+        if (!d || !d.source || !d.target) return '';
+        var fromName = (d.source.id != null) ? d.source.id : (d.sourceName || '');
+        var toName = (d.target.id != null) ? d.target.id : (d.targetName || '');
+        var num = typeof d.value === 'number' ? Math.round(d.value) : (d.value || 0);
+        return fromName + ' → ' + toName + '  ' + num + ' 人';
+      }
+
+      var linkColors = ['#059669', '#2563eb', '#d97706', '#dc2626', '#7c3aed', '#475569'];
+      function linkColor(d) {
+        var idx = graph.nodes.indexOf(d.source);
+        return linkColors[idx >= 0 && idx < 6 ? idx : 0];
+      }
+
+      var hoverInfoEl = document.getElementById('sankey-hover-info');
+      if (!hoverInfoEl) {
+        hoverInfoEl = document.createElement('div');
+        hoverInfoEl.id = 'sankey-hover-info';
+        hoverInfoEl.className = 'sankey-hover-info empty';
+        container.parentNode.appendChild(hoverInfoEl);
+      }
+
+      var dateAndTip = function(tip) { return '由 ' + from + ' 到 ' + to + '<br>' + tip; };
+      function showTipOnClick(event, d) {
+        if (!d) return;
+        var tip = tipText(d);
+        var content = dateAndTip(tip);
+        if (tooltipEl) {
+          tooltipEl.innerHTML = content;
+          tooltipEl.classList.add('show');
+          var x = event.pageX + 14;
+          var y = event.pageY - 50;
+          if (y < 12) y = 12;
+          tooltipEl.style.left = x + 'px';
+          tooltipEl.style.top = y + 'px';
+        }
+        if (hoverInfoEl) {
+          hoverInfoEl.innerHTML = content;
+          hoverInfoEl.classList.remove('empty');
+        }
+      }
+
+      var node = svg.append('g').selectAll('g').data(graph.nodes).join('g')
+        .attr('transform', function(d) { return 'translate(' + d.x0 + ',' + d.y0 + ')'; });
+      node.append('rect')
+        .attr('height', function(d) { return d.y1 - d.y0; })
+        .attr('width', function(d) { return d.x1 - d.x0; })
+        .attr('fill', '#4f46e5')
+        .attr('opacity', 0.88)
+        .attr('pointer-events', 'none');
+      node.append('text')
+        .attr('x', function(d) {
+          return d.side === 'L' ? -6 : (d.x1 - d.x0) + 6;
+        })
+        .attr('y', function(d) { return (d.y1 - d.y0) / 2; })
+        .attr('dy', '0.35em')
+        .attr('text-anchor', function(d) { return d.side === 'L' ? 'end' : 'start'; })
+        .attr('fill', '#1e293b')
+        .attr('font-size', 11)
+        .attr('pointer-events', 'none')
+        .text(function(d) { return d.id; });
+
+      var linkGroup = svg.append('g').attr('class', 'sankey-links').selectAll('g').data(graph.links).join('g')
+        .attr('class', 'sankey-link-group')
+        .attr('data-tip', function(d) { return tipText(d); })
+        .style('cursor', 'pointer');
+      linkGroup.append('path')
+        .attr('class', 'sankey-link-visible')
+        .attr('d', d3.sankeyLinkHorizontal())
+        .attr('stroke', function(d) { return linkColor(d); })
+        .attr('stroke-width', function(d) { return Math.max(8, (d.width || 2)); })
+        .attr('fill', 'none')
+        .on('click', showTipOnClick);
+      linkGroup.append('path')
+        .attr('class', 'sankey-link-hit')
+        .attr('d', d3.sankeyLinkHorizontal())
+        .attr('stroke', 'rgba(0,0,0,0.001)')
+        .attr('stroke-width', 32)
+        .attr('fill', 'none')
+        .on('click', showTipOnClick);
+
+      container.onclick = function(e) {
+        var el = e.target;
+        while (el && el !== container) {
+          var tip = el.getAttribute && el.getAttribute('data-tip');
+          if (tip) {
+            e.stopPropagation();
+            var content = dateAndTip(tip);
+            if (tooltipEl) {
+              tooltipEl.innerHTML = content;
+              tooltipEl.classList.add('show');
+              var x = e.pageX + 14, y = e.pageY - 50;
+              if (y < 12) y = 12;
+              tooltipEl.style.left = x + 'px';
+              tooltipEl.style.top = y + 'px';
+            }
+            if (hoverInfoEl) {
+              hoverInfoEl.innerHTML = content;
+              hoverInfoEl.classList.remove('empty');
+            }
+            return;
+          }
+          el = el.parentElement;
+        }
+      };
+    }
+
+    function saveParams() {
+      alert('参数已保存，数据每日凌晨更新，修改参数将在下一次更新后生效。');
+    }
+    function resetParams() {
+      document.getElementById('r3-days').value = 180;
+      document.getElementById('r2-days-min').value = 181;
+      document.getElementById('r2-days-max').value = 365;
+      document.getElementById('r1-days').value = 365;
+      document.getElementById('f3-pct').value = 34;
+      document.getElementById('f2-pct').value = 33;
+      document.getElementById('f1-pct').value = 33;
+      document.getElementById('m3-pct').value = 34;
+      document.getElementById('m2-pct').value = 33;
+      document.getElementById('m1-pct').value = 33;
+      alert('已恢复默认参数');
+    }
+
+    function showConfirmGenerateModal() {
+      document.getElementById('confirm-generate-modal').classList.add('show');
+    }
+    function closeConfirmGenerateModal() {
+      document.getElementById('confirm-generate-modal').classList.remove('show');
+    }
+    function confirmGenerateGroups() {
+      closeConfirmGenerateModal();
+      var html = '<div class="tag-group"><strong>RFM 六群组（基于当前配置）</strong><div class="tag-list">';
+      SEGMENTS.forEach(function(s) {
+        html += '<span class="tag" title="' + s.scores + '">' + s.name + ' (' + s.en + ')</span>';
+      });
+      html += '</div></div>';
+      document.getElementById('tag-output').innerHTML = html;
+    }
+
+    // 初始加载
+    querySegments();
+    drawSankey();
+  </script>
+</body>
+</html>
